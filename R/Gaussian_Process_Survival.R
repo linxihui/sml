@@ -16,7 +16,7 @@
 #' 
 #' gp <- gpsrc(Class ~., data = Sonar[i.tr,], kpar = list(sigma = 0.01))
 #' gp.pred <- predict(gp, Sonar[-i.tr, ], type = 'prob')
-#' cat('AUC:', roc(y[-i.tr], gp.pred[, 2])$auc, '-- gpsrc.formula', '\n');
+#' cat('AUC:', roc(Sonar$Class[-i.tr], gp.pred[, 2])$auc, '\n');
 #' 
 #' ## regression
 #' 
@@ -26,7 +26,7 @@
 #' 
 #' gp2 <- gpsrc(medv ~., data = BH[i.tr, ], kpar = list(sigma = 0.1));
 #' gp2.pred <- predict(gp2, BH[-i.tr, ])
-#' cat('RMSE:', sqrt(mean((BH$medv[-i.tr] - gp2.pred)^2)), '-- gpsrc.formula\n');
+#' cat('RMSE:', sqrt(mean((BH$medv[-i.tr] - gp2.pred)^2)), '\n');
 #' 
 #' ## survival
 #' 
@@ -38,7 +38,7 @@
 #' gp <- gpsrc(Surv(days, status) ~., data = pbc[i.tr, ], 
 #' 	kernel = 'laplacedot', kpar = list(sigma = 0.1));
 #' gp.pred <- predict(gp, pbc[-i.tr, ])
-#' cat('C-index:', survConcordance(y[-i.tr] ~ gp.pred)$concordance, '-- gpsrc.default\n');
+#' cat('C-index:', survConcordance(Surv(days, status) ~ gp.pred, data = pbc[-i.tr, ])$concordance, '\n');
 #' @export
 gpsrc <- function(x, ...) UseMethod('gpsrc');
 
@@ -62,15 +62,16 @@ gpsrc.formula <- function(formula, data, ...) {
 
 gpsrc.default <- function(
 	x, y, scaled = TRUE, 
-	kernel = 'rbf', kpar = 'automatic',
+	kernel = 'rbfdot', kpar = 'automatic',
 	var = 1.0,
 	family = switch(class(y), 
 		'Surv' = 'cox', 
-		'factor' = 'binomial', 
+		'factor' = ifelse(nlevels(y) > 2, 'multinomial', 'binomial'),
 		'integer' = 'poisson', 
 		'gaussian'), 
 	...) {
-
+		stopifnot(suppressMessages(require(glmnet)));
+		stopifnot(suppressMessages(require(kernlab)));
 		x.scale <- NULL;
 		y.scale <- NULL;
 		if (scaled) {
@@ -94,7 +95,7 @@ gpsrc.default <- function(
 				);
 			if(is.character(kpar)) {
 				if((kernel %in% c("tanhdot", "vanilladot", "polydot", "besseldot", "anovadot", "splinedot")) && "automatic" == kpar ) {
-					cat(" Setting default kernel parameters ","\n");
+					# cat(" Setting default kernel parameters ","\n");
 					kpar <- list();
 					}
 				}
@@ -106,7 +107,7 @@ gpsrc.default <- function(
 				if("automatic" == kp) {
 					kpar <- list(sigma = mean(sigest(x, scaled = FALSE)[c(1,3)]));
 					}
-				cat("Using automatic sigma estimation (sigest) for RBF or laplace kernel","\n");
+				# cat("Using automatic sigma estimation (sigest) for RBF or laplace kernel","\n");
 				}
 			}
 
@@ -120,14 +121,31 @@ gpsrc.default <- function(
 		# cholesky decomposition K = R'R,  f = theta = K alpha = R' beta =>  R alpha = beta
 		R <- chol(K);
 		
-		require(glmnet);
 		lambda <- switch(family, 
 			'gaussian' = var/nrow(x),
 			1 / nrow(x)
 			);
-		beta <- as.vector(glmnet(t(R), y, alpha = 0, lambda = lambda, family = family, ...)$beta);
-		alpha <- backsolve(R, beta);
+		beta <- as.vector(coef(
+				glmnet(t(R), y, alpha = 0, lambda = lambda, 
+					standardize = FALSE, family = family, ...)
+				));
 
+		if (!is.list(beta)) {
+			if (length(beta) > nrow(x)) {
+				alpha <- c(beta[1], backsolve(R, beta[-1]));
+			} else {
+				alpha <- c(0, backsolve(R, beta));
+				}
+		} else {
+			alpha <- lapply(beta, function(iBeta) {
+				iBeta <- as.vector(iBeta);
+				if (length(iBeta) > nrow(x)) {
+					c(iBeta[1], backsolve(R, iBeta[-1]));
+				} else {
+					c(0, backsolve(R, iBeta));
+					}
+				});
+			}
 		return(structure(
 			list(
 				alpha = alpha, 
@@ -162,25 +180,43 @@ predict.gpsrc <- function(
 			scale = object$x.scale[['scaled:scale']]
 			);
 		}
-	pred <- kernelMult(
-		object$kernel, newdata, 
-		object$xmatrix, as.matrix(object$alpha)
-		); # need to check carefully
-	if ('gaussian' == object$family && !is.null(object$y.scale)) {
-		pred <- pred*object$y.scale[['scaled:scale']] + object$y.scale[['scaled:center']];
-		}
-	if ('binomial' == object$family) {
-		if ('response' == type) {
-			pred <- object$lev[as.numeric(pred > 0) + 1];
-		} else if ('probabilities' == type) {
+	if ('multinomial' == object$family) {
+		pred <- sapply(object$alpha, function(iAlpha) {
+			c(kernelMult(
+				object$kernel, newdata, 
+				object$xmatrix, as.matrix(iAlpha[-1])
+				) + iAlpha[1]);
+			});
+		colnames(pred) <- object$lev;
+		if ('probabilities' == type) {
 			pred <- 1 / (1 + exp(-pred));
-			pred <- cbind(1 - pred, pred);
-			colnames(pred) <- object$lev
+			pred <- prop.table(pred, margin = 1);
+			}
+		if ('response' == type) {
+			pred <- object$lev[apply(pred, 1, which.max)];
+			}
+	} else {
+		pred <- c(kernelMult(
+			object$kernel, newdata, 
+			object$xmatrix, as.matrix(object$alpha[-1])
+			) + object$alpha[1]);
+		if ('gaussian' == object$family && !is.null(object$y.scale)) {
+			pred <- pred*object$y.scale[['scaled:scale']] + object$y.scale[['scaled:center']];
+			}
+		if ('binomial' == object$family) {
+			if ('response' == type) {
+				pred <- object$lev[as.numeric(pred > 0) + 1];
+			} else if ('probabilities' == type) {
+				pred <- 1 / (1 + exp(-pred));
+				pred <- cbind(1 - pred, pred);
+				colnames(pred) <- object$lev
+				}
+			}
+		if ((object$family %in% c('poisson', 'cox')) && (type %in% c('response', 'risk'))) {
+			pred <- exp(pred);
 			}
 		}
-	if ('cox' == object$family && 'risk' == type ) {
-		pred <- exp(pred)
-		}
+	if (is.matrix(pred)) {rownames(pred) <- rownames(newdata);}
 	return(pred);
 	}
 
@@ -227,7 +263,7 @@ y <- BH$medv;
 
 ridge <- cv.glmnet(x[i.tr, ], y[i.tr], alpha = 0);
 ridge.pred <- predict(ridge, x[-i.tr, ], s = 'lambda.min');
-cat('RMSE:', sqrt(mean((BH$medv[-i.tr] - ridge.pred)^2)), '-- Ridge\n');
+cat('RMSE:', sqrt(mean((BH$medv[-i.tr] - ridge.pred)^2)), '-- Ridge(CV)\n');
 
 kl.gp <- gausspr(medv ~., data = BH[i.tr, ], kpar = list(sigma = 0.1));
 kl.gp.pred <- predict(kl.gp, BH[-i.tr, ])
