@@ -1,9 +1,33 @@
 # implement extreme learning machine for survival, regression, classification
 # TODO:
 # 	Implement deep extreme learning machine
-
+#
+#' @title Extreme learning machine for survival, classification, regression (univariate / multivariate)
+#' @param formula Model formula
+#' @param data Training data frame
+#' @param ... Further parameters passed to internal function
+#' @param x Design matrix
+#' @param y Survival object, factor or a vector/matrix of continuous variable
+#' @param nhid Number of (random) hidden neurons
+#' @param actfun Activating function
+#' @param scaled If to standardize input units
+#' @param family Choices of 'cox', 'binomial', 'multinomial', 'poisson', 'gaussian', 'mgaussian' 
+#' @param lambda Shrinkage factor
+#' @return elm object.
+#' @examples
+#' library(survival);
+#' data(pbc, package = 'randomForestSRC');
+#' pbc <- na.omit(pbc);
+#' i.tr <- sample(nrow(pbc), 100);
+#' 
+#' elm.f <- elm(Surv(days, status) ~., data = pbc[i.tr, ], nhid = 500);
+#' elm.pred <- predict(object = elm.f, newdata = pbc[-i.tr, ], type = 'link');
+#' survConcordance(Surv(days, status) ~ elm.pred, data = pbc[-i.tr, ])
+#' @export
 elm <- function(x, ...) UseMethod('elm');
 
+#' @rdname elm
+#' @export
 elm.formula <- function(formula, data = environment(formula), ...) {
 	formula <- stats::formula(terms(formula, data = data));
 	mf <- model.frame(formula, data);
@@ -19,18 +43,21 @@ elm.formula <- function(formula, data = environment(formula), ...) {
 	return(out);
 	}
 
+#' @rdname elm
+#' @export
 elm.default <- function(
-	x, y, nhid = 2*ncol(x), actfun = 'sig', scaled = TRUE,
+	x, y, nhid = max(200, 2*ncol(x)), actfun = 'sig', scaled = TRUE,
 	family = switch(class(y), 
 		'Surv' = 'cox', 
 		'factor' = ifelse(nlevels(y) > 2, 'multinomial', 'binomial'),
 		'integer' = 'poisson', 
+		'matrix' = 'mgaussian',
 		'gaussian'), 
-	lambda = 0.001,
+	lambda = ifelse(family == 'mgaussian', 0, 1.0),
 	...) {
-    stopifnot(suppressMessages(require(glmnet)));
-    if (nhid < 1) {
-        stop("ERROR: number of hidden neurons must be >= 1")
+	stopifnot(suppressMessages(require(glmnet)));
+	if (nhid < 1) {
+		stop("ERROR: number of hidden neurons must be >= 1")
 		}
 	x.scale <- NULL;
 	y.scale <- NULL;
@@ -46,13 +73,13 @@ elm.default <- function(
 			}
 		}
 	inpweight <- matrix(runif(nhid*ncol(x), -1, 1), ncol = nhid);
-    tempH <- x %*% inpweight;
-    biashid <- runif(nhid, min = -1, max = 1)
-    biasMatrix <- matrix(
+	tempH <- x %*% inpweight;
+	biashid <- runif(nhid, min = -1, max = 1);
+	biasMatrix <- matrix(
 		rep(biashid, nrow(x)), 
 		nrow = nrow(x), ncol = nhid, byrow = TRUE
 		);
-    tempH = tempH + biasMatrix;
+	tempH = tempH + biasMatrix;
 	actfun2 <- actfun;
 	H <- switch(actfun,
 		"sig"      = 1/(1 + exp(-1 * tempH)),
@@ -69,23 +96,30 @@ elm.default <- function(
 	if ('cox' == family) {
 		stopifnot(suppressMessages(require(survival)));
 		}
-	glmnet.fit <- glmnet(
-		x = H, y = y, family = family, 
-		alpha = 0, lambda = lambda, ...
-		);
-    model = list(
+	if (family %in% c('gaussian', 'mgaussian') && lambda <= 0) {
+		outlayer <- ginv(H) %*% y;
+	} else {
+		outlayer <- glmnet(
+			x = H, y = y, family = family, 
+			alpha = 0, lambda = lambda, ...
+			);
+		}
+	model = list(
 		inpweight = inpweight, biashid = biashid,
-		nhid = nhid, actfun = actfun, 
+		outlayer = outlayer, nhid = nhid, actfun = actfun, 
 		x.scale = x.scale, y.scale = y.scale, 
-		family = family, fitted = glmnet.fit
+		family = family, lambda = lambda 
 		);
-    model$call <- match.call();
-    class(model) <- "elm";
-    return(model);
-    }
+	model$call <- match.call();
+	class(model) <- "elm";
+	return(model);
+	}
 
-# predict function for extreme learning machine
-
+#' @param object elm object
+#' @param newdata A data frame (if elm called via formula) or a design matrix (if elm called via design matrix)
+#' @param type Type of output
+#' @rdname elm
+#' @export
 predict.elm <- function (
 	object, newdata, 
 	type = c('response', 'probabilities', 'link', 'risk')
@@ -121,31 +155,20 @@ predict.elm <- function (
 		"purelin"  = tmpHTest,
 		do.call(actfun2, list(tmpHTest))
 		);
-	if (object$family %in% c('binomial', 'multinomial')) {
-		if ('response' == type) {type <- 'class';}
-		if ('probabilities' == type) {type <- 'response';}
-	} else if ('cox' == object$family) { 
-		if ('risk' == type) {type <- 'response';}
+	if (is(object$outlayer, 'glmnet')) {
+		if (object$family %in% c('binomial', 'multinomial')) {
+			if ('response' == type) {type <- 'class';}
+			if ('probabilities' == type) {type <- 'response';}
+			} else if ('cox' == object$family) { 
+				if ('risk' == type) {type <- 'response';}
+				}
+		pred <- predict(object$outlayer, newx = HTest, type = type);
+	} else {
+		pred <- HTest %*% object$outlayer;
 		}
-	pred <- predict(object$fitted, newx = HTest, type = type);
-	if ('gaussian' == object$family && !is.null(object$y.scale)) {
+	if (object$family %in% c('gaussian', 'mgaussian') && !is.null(object$y.scale)) {
 		pred <- pred*object$y.scale[['scaled:scale']] + object$y.scale[['scaled:center']];
 		}
 	if(is.matrix(pred)) {rownames(pred) <- rownames(newdata);}
 	return(pred);
 	}
-
-if (0) {
-
-library(survival);
-data(pbc, package = 'randomForestSRC');
-pbc <- na.omit(pbc);
-i.tr <- sample(nrow(pbc), 100);
-
-elm.f <- elm(Surv(days, status) ~., data = pbc[i.tr, ], nhid = 500, lambda = 0.01);
-elm.pred <- predict(object = elm.f, newdata = pbc[-i.tr, ], type = 'link')
-cat('C-index:', 
-	survConcordance(Surv(days, status) ~ elm.pred, data = pbc[-i.tr, ])$concordance, 
-	'\n');
-
-}
