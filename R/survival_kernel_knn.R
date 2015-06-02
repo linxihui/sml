@@ -60,7 +60,7 @@ kkm.default <- function(
 	x, y, xtest = NULL, ytest = NULL, 
 	return.train.prediction = FALSE || is.null(xtest),
 	scaled = TRUE, k = nrow(x), 
-	times = unique(sort(y[as.logical(y[, 2]), 1])),
+	times = y[as.logical(y[, 2]), 1],
 	kernel = 'rbfdot', kpar = 'automatic'
 	) {
 	stopifnot(suppressMessages(require(survival)));
@@ -71,77 +71,92 @@ kkm.default <- function(
 		x.scale <- attributes(x)[c('scaled:center', 'scaled:scale')];
 		attributes(x)[c('scaled:center', 'scaled:scale')] <- NULL;
 		}
-	if(is.character(kernel)) {
-		kernel <- match.arg(
-			kernel, 
-			c(
-				"rbfdot","polydot","tanhdot","vanilladot",
-				"laplacedot","besseldot","anovadot","splinedot"
-				)
-			);
-		if(is.character(kpar)) {
-			if((kernel %in% c("tanhdot", "vanilladot", "polydot", "besseldot", "anovadot", "splinedot")) && "automatic" == kpar ) {
-				# cat(" Setting default kernel parameters ","\n");
-				kpar <- list();
-				}
-			}
-		}
 
-	if (!is.function(kernel)) {
-		if (!is.list(kpar) && is.character(kpar) && c(class(kernel) %in% c("rbfkernel", "laplacedot") || kernel %in% c("laplacedot", "rbfdot"))) {
-			kp <- match.arg(kpar, "automatic");
-			if("automatic" == kp) {
-				kpar <- list(sigma = mean(sigest(x, scaled = FALSE)[c(1,3)]));
-				}
-			# cat("Using automatic sigma estimation (sigest) for RBF or laplace kernel","\n");
-			}
-		}
-
-	if(!is(kernel,"kernel")) {
-		if (is(kernel,"function")) {kernel <- deparse(substitute(kernel));}
-		kernel <- do.call(kernel, kpar);
-		}
-	if(!is(kernel,"kernel")) {stop("kernel must inherit from class `kernel'");}
-
-	if (!is.null(xtest)) {
-		xtest <- scale(xtest, center = x.scale[['scaled:center']], scale = x.scale[['scaled:scale']]);
-		}
-
-	if (return.train.prediction) {
-		xpred <- rbind(x, xtest);
-		if.test <- c(rep(FALSE, nrow(x)), rep(TRUE, ifelse(is.null(xtest), 0,  nrow(xtest))));
+	if(is.matrix(kernel))  {
+		kern.weight <- kernel;
+		if.test <- rep(TRUE, ncol(kern.weight));
 	} else {
-		xpred <- xtest;
-		if.test <- rep(TRUE, ifelse(is.null(xtest), 0, nrow(xtest)));
-		}
+		if(is.character(kernel)) {
+			kernel <- match.arg(
+				kernel, 
+				c(
+					"rbfdot","polydot","tanhdot","vanilladot",
+					"laplacedot","besseldot","anovadot","splinedot"
+					)
+				);
+			if(is.character(kpar)) {
+				if((kernel %in% c("tanhdot", "vanilladot", "polydot", "besseldot", "anovadot", "splinedot")) && "automatic" == kpar ) {
+					# cat(" Setting default kernel parameters ","\n");
+					kpar <- list();
+					}
+				}
+			}
 
-	kern.dist <- kernelMatrix(kernel, x, xpred)@.Data;
+		if (!is.function(kernel)) {
+			if (!is.list(kpar) && is.character(kpar) && c(class(kernel) %in% c("rbfkernel", "laplacedot") || kernel %in% c("laplacedot", "rbfdot"))) {
+				kp <- match.arg(kpar, "automatic");
+				if("automatic" == kp) {
+					kpar <- list(sigma = mean(sigest(x, scaled = FALSE)[c(1,3)]));
+					}
+				# cat("Using automatic sigma estimation (sigest) for RBF or laplace kernel","\n");
+				}
+			}
+
+		if(!is(kernel,"kernel")) {
+			if (is(kernel,"function")) {kernel <- deparse(substitute(kernel));}
+			kernel <- do.call(kernel, kpar);
+			}
+		if(!is(kernel,"kernel")) {stop("kernel must inherit from class `kernel'");}
+
+		if (!is.null(xtest)) {
+			xtest <- scale(xtest, center = x.scale[['scaled:center']], scale = x.scale[['scaled:scale']]);
+			}
+
+		if (return.train.prediction) {
+			xpred <- rbind(x, xtest);
+			if.test <- c(rep(FALSE, nrow(x)), rep(TRUE, ifelse(is.null(xtest), 0,  nrow(xtest))));
+		} else {
+			xpred <- xtest;
+			if.test <- rep(TRUE, ifelse(is.null(xtest), 0, nrow(xtest)));
+			}
+		kern.weight <- kernelMatrix(kernel, x, xpred)@.Data;
+		}
 
 	if (k < nrow(x)) {
-		knn.mask <- apply(kern.dist, 2, function(z) {
+		knn.mask <- apply(kern.weight, 2, function(z) {
 			o <- rep(0, length(z));
 			o[order(-z)[1:k]] <- 1;
 			return(o);
 			})
-		kern.dist <- kern.dist*knn.mask;
+		kern.weight <- kern.weight*knn.mask;
 		}
 
-	time.order <- order(-y[,1], y[,2]); # time sorted from largest to smallest
-	is.event.sorted <- as.logical(y[time.order, 2]);
-	event.sorted <- y[time.order, 1][is.event.sorted];
+	time.order <- order(-y[,1], y[,2]);
+	kern.weight <- kern.weight[time.order, ];
+	y <- y[time.order]; # time sorted from largest to smallest
 
-	output.index <- rev(!duplicated(event.sorted));
-	times <- rev(y[time.order, 1][is.event.sorted])[output.index];
+	is.event <- as.logical(y[, 2]);
+	stopifnot(all(times > 0));
+	times <- unique(sort(times));
+	event.times <- unique(sort(y[is.event, 1]));
+	is.subset <- all(times %in% event.times);
+	is.exact <- identical(times, event.times);
 
 	kkm.est <- t(apply(
-		X = kern.dist,
+		X = kern.weight,
 		MARGIN = 2,
 		FUN = function(w) {
-			w <- w[time.order];
-			at.risk <- cumsum(w)[is.event.sorted];
-			exp(cumsum(rev(log((at.risk - w[is.event.sorted]) / (at.risk)))))[output.index];
+			event.mask <- is.event & w > 0;
+			at.risk <- cumsum(w)[event.mask];
+			surv = exp(cumsum(rev(log(1 - w[event.mask] / at.risk))));
+			if (any(event.mask != is.event) || !is.subset) {
+				times.ok <- y[event.mask, 1];
+				c(1, surv)[sapply(times, function(z) {a <- which(z >= c(0, times.ok)); a[length(a)]})]
+			} else if (!is.exact) {
+				surv[event.times %in% times]
+			} else surv;
 			}
-		))
+		));
 
 	colnames(kkm.est) <- as.character(times);
 
