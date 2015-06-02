@@ -41,10 +41,9 @@
 #' @export
 gpsrc <- function(x, ...) UseMethod('gpsrc');
 
-
 #' @rdname gpsrc
 #' @export gpsrc.formula
-gpsrc.formula <- function(formula, data, ...) {
+gpsrc.formula <- function(formula, data = environment(formula), ...) {
 	formula <- stats::formula(terms(formula, data = data));
 	mf <- model.frame(formula, data);
 	x <- model.matrix(formula, data);
@@ -162,7 +161,8 @@ gpsrc.default <- function(
 			x.scale = x.scale,
 			y.scale = y.scale,
 			family = family,
-			lev = if(is.factor(y)) levels(y) else NULL
+			lev = if(is.factor(y)) levels(y) else NULL,
+			call = match.call()
 			), 
 		class = 'gpsrc'
 		));
@@ -259,7 +259,6 @@ gp2 <- gpsrc(Class ~., data = Sonar[i.tr,], kpar = list(sigma = 0.01))
 gp2.pred <- predict(gp2, Sonar[-i.tr, ], type = 'prob')
 cat('AUC:', roc(y[-i.tr], gp2.pred[, 2])$auc, '-- gpsrc.formula', '\n');
 
-
 ## regression
 
 data(BostonHousing);
@@ -284,7 +283,6 @@ cat('RMSE:', sqrt(mean((BH$medv[-i.tr] - gp.pred)^2)), '-- gpsrc.default\n');
 gp2 <- gpsrc(medv ~., data = BH[i.tr, ], kpar = list(sigma = 0.1));
 gp2.pred <- predict(gp2, BH[-i.tr, ])
 cat('RMSE:', sqrt(mean((BH$medv[-i.tr] - gp2.pred)^2)), '-- gpsrc.formula\n');
-
 
 ## survival
 
