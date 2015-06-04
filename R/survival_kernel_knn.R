@@ -7,6 +7,7 @@
 #' 	If the 'x-y' method called, `xtest` is the design matrix of the test set
 #' @param ytest (optional) Survival outcome for testset
 #' @param times Times to evaluate survival probabilities. Currently no used. All unique event times in training are used
+#' @param type Type of estimator, either 'Kaplan-meier' or 'nelson-aalen'
 #' @param k Number of nearest neighbour used. Default to `nrow(x)` which seems the best
 #' @param scaled Logical value indicating if to standardize x, y
 #' @param kernel String or 'kernel' object (see kernlab::gausspr)
@@ -61,10 +62,12 @@ kkm.default <- function(
 	return.train.prediction = FALSE || is.null(xtest),
 	scaled = TRUE, k = nrow(x), 
 	times = y[as.logical(y[, 2]), 1],
+	type = c('kaplan-meier', 'nelson-aalen'),
 	kernel = 'rbfdot', kpar = 'automatic'
 	) {
 	stopifnot(suppressMessages(require(survival)));
 	stopifnot(suppressMessages(require(kernlab)));
+	type <- match.arg(type);
 	x.scale <- NULL;
 	if (scaled) {
 		x <- scale(x);
@@ -148,12 +151,15 @@ kkm.default <- function(
 		FUN = function(w) {
 			event.mask <- is.event & w > 0;
 			at.risk <- cumsum(w)[event.mask];
-			surv = exp(cumsum(rev(log(1 - w[event.mask] / at.risk))));
+			surv <- switch(type,
+				'kaplan-meier' = exp(cumsum(rev(log(1 - w[event.mask] / at.risk)))),
+				'nelson-aalen' = exp(-cumsum(rev(-w[event.mask.mask] / at.risk)))
+				);
 			if (any(event.mask != is.event) || !is.subset) {
 				times.ok <- y[event.mask, 1];
 				c(1, surv)[sapply(times, function(z) {a <- which(z >= c(0, times.ok)); a[length(a)]})]
 			} else if (!is.exact) {
-				surv[event.times %in% times]
+				surv[event.times %in% times];
 			} else surv;
 			}
 		));
@@ -168,6 +174,7 @@ kkm.default <- function(
 				train.predicted.survival = kkm.est[!if.test, ],
 				train.observed.survival = y,
 				time.interest = times, 
+				type = type,
 				kernel = kernel, x.scale = x.scale,
 				call = match.call()
 				),
