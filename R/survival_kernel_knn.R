@@ -156,7 +156,7 @@ kkm.default <- function(
 			at.risk <- rev(cumsum(rev(w)))[event.mask];
 			surv <- switch(type,
 				'kaplan-meier' = exp(cumsum(log(1 - w[event.mask] / at.risk))),
-				'nelson-aalen' = exp(-cumsum(w[event.mask.mask] / at.risk))
+				'nelson-aalen' = exp(-cumsum(w[event.mask] / at.risk))
 				);
 			if (any(event.mask != is.event) || !is.subset) {
 				times.ok <- y[event.mask, 1];
