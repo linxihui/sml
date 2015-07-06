@@ -22,7 +22,9 @@
 #' i.tr <- sample(nrow(pbc), 100);
 #' kkm.pred <- kkm(Surv(days, status) ~., data = pbc[i.tr, ], xtest = pbc[-i.tr, ], kernel = 'laplacedot', kpar = list(sigma = 0.1));
 #' # concordance index if using 30th event time
-#' survConcordance(y[-i.tr] ~ I(1- kkm.pred$test.predicted.survival[, 30]))$concordance
+#' survConcordance(Surv(days, status) ~ I(1 - kkm.pred$test.predicted.survival[, 30]), data = pbc[-i.tr, ])$concordance
+#' 
+#' plot(kkm.pred, subset = sample(length(i.tr), 10), lwd = 2)
 #'
 #' @export
 kkm <- function(x, ...) UseMethod('kkm');
