@@ -1,0 +1,15 @@
+Package: sml
+Type: Package
+Title: Machine Learning for Survival Data
+Version: 0.0.000001
+Date: 2015-06-15
+Author: Eric Xihui Lin
+Maintainer: Eric Xihui Lin <xihuil.silence@gmail.com>
+Depends:
+    R (>= 3.0.1),
+    survival,
+	foreach,
+	doMC,
+	glmnet
+Description: A collection of machine learning algorithms for survival data 
+License: GPL-2
