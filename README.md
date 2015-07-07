@@ -17,9 +17,13 @@ involve a baseline hazard function, and thus parameters of interest gain more de
 
 The Cox partial likelihood looks like
 
-$$ L(y | \theta, h_0(t)) = \prod_{i: \delta_i = 1} \dfrac{\exp(\theta_i)}{\sum_{j: y_j \ge y_i} \exp(\theta_j)}, $$
+$$ 
+\begin{aligned}
+L(y | \theta, h_0(t)) = \prod_{i: \delta_i = 1} \dfrac{\exp(\theta_i)}{\sum_{j: y_j \ge y_i} \exp(\theta_j)}, 
+\end{aligned}
+$$
 
-where $\theta_i$'s are usually called *links*, or *log risk* (as $\exp{\theta_i}$'s are called *risk*).
+where $\theta_i$'s are usually called *links*, or *log risk* (as $$\(exp{\theta_i}\)$$'s are called *risk*).
 
 In Cox's model, 
 $$ \theta_i  = X_i \beta. $$
@@ -68,7 +72,7 @@ cat('C-index:', gp.cInd$concordance, '\n');
 ```
 
 ```
-## C-index: 0.8358762
+## C-index: 0.8215892
 ```
 
 ## Extreme learning machine
@@ -105,7 +109,7 @@ cat('C-index:', elm.cInd$concordance, '\n');
 ```
 
 ```
-## C-index: 0.8317411
+## C-index: 0.8196811
 ```
 
 
@@ -138,5 +142,5 @@ plot(kkm.pred, subset = sample(length(i.tr), 10), lwd = 2);
 ![](README_files/figure-html/kkm-1.png) 
 
 ```
-## C-index: 0.8497077
+## C-index: 0.8168189
 ```
