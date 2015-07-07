@@ -172,6 +172,7 @@ gpsrc.default <- function(
 #' @param newdata Design matrix of test set
 #' @param type Type of output
 #' @rdname gpsrc
+#' @export
 predict.gpsrc <- function(
 	object, newdata, 
 	type = c('response', 'probabilities', 'link', 'risk')

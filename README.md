@@ -17,12 +17,22 @@ involve a baseline hazard function, and thus parameters of interest gain more de
 
 The Cox partial likelihood looks like
 
-![](https://raw.githubusercontent.com/linxihui/sml/master/README_files/cox_linear.png)
+<p align="center">
+<img src="https://raw.githubusercontent.com/linxihui/sml/master/.README/equation/cox_partial_likelihood.png"  width="420">
+</p>
+<!--
+$$ L(y | \theta, h_0(t)) = \prod_{i: \delta_i = 1} \dfrac{\exp(\theta_i)}{\sum_{j: y_j \ge y_i} \exp(\theta_j)}, $$
+-->
 
 where $\theta_i$'s are usually called *links*, or *log risk* (as $\exp{\theta_i}$'s are called *risk*).
 
 In Cox's model, 
-$$ \theta_i  = X_i \beta. $$
+
+<p align="center">
+<img src="https://raw.githubusercontent.com/linxihui/sml/master/.README/equation/cox_linear.png"  width="100">
+</p>
+
+<!-- $$ \theta_i  = X_i \beta. $$ -->
 
 # Currently implemented algorithms
 
@@ -32,24 +42,44 @@ Gaussian process regression and classification have been shown to be powerful. H
 is available in R. However, the extension is quite straight forward, by assuming that $\theta$ are sampled from 
 a Gaussian process (prior), i.e.,
 
-$$ \theta \sim N(0, K), $$
+<p align="center">
+<img src="https://raw.githubusercontent.com/linxihui/sml/master/.README/equation/gp_theta_normal.png"  width="130">
+</p>
+<!-- $$ \theta \sim N(0, K), $$ -->
 
 where $K = (k_{ij}) = K(x_i, x_j)$ is the kernel matrix.
 
 The posterior distribution,
 
+<!--
 $$ p(\theta | y, \mu, K) \propto \frac{L(y | \theta, h_0(t))} 
 	{\sqrt{(2\pi)^n\det(K)}} \exp\left(-\frac1{2} 
 		\theta^T K^{-1} \theta\right).$$
+	-->
 
-Let $\alpha = Z^{-1}\theta$, where $Z = \left(z_1^T, \cdots, z_n^T\right)^T$, 
-	$K = Z^T Z$.
+<p align="center">
+<img src="https://raw.githubusercontent.com/linxihui/sml/master/.README/equation/gp_posterior.png"  width="550">
+</p>
 
+Define 
+<!-- $\alpha = Z^{-1}\theta$, where $Z = \left(z_1^T, \cdots, z_n^T\right)^T$, 
+	$K = Z^T Z$. -->
+<p align="center">
+<img src="https://raw.githubusercontent.com/linxihui/sml/master/.README/equation/gp_chol_decomp.png" width="450">
+</p>
+
+After taking the logarithm, we get
+
+<p align="center">
+<img src="https://raw.githubusercontent.com/linxihui/sml/master/.README/equation/gp_posterior_log.png"  align="middle" width="700">
+</p>
+<!--
 $$\log p(\alpha | y) = \sum_{i:\delta_i=1} \left(
 	z_i^T\alpha - \log\left(\sum_{j: y_j \ge y_i} \exp(z_i^T\alpha)\right)\right) - 
 	\frac{1}{2} \alpha^T \alpha + c.$$
+	-->
 
-The max-a-posterior(MAP) estimate $\hat\alpha_{\text{\tiny MAP}}$ (and thus $\hat\theta_{\text{\tiny MAP}}$) can be estimated by ridge regression solver (such as *glmnet*). This is implemented as *gprc*.
+The max-a-posterior(MAP) estimate $\hat\alpha_{\text{\tiny MAP}}$ (and thus $\hat\theta_{\text{\tiny MAP}}$) can be estimated by ridge regression solver (such as *glmnet*). This is implemented as *gpsrc*.
 
 
 ```r
@@ -57,6 +87,7 @@ The max-a-posterior(MAP) estimate $\hat\alpha_{\text{\tiny MAP}}$ (and thus $\ha
 
 library(survival);
 library(sml);
+set.seed(123);
 data(pbc, package = 'randomForestSRC');
 pbc <- na.omit(pbc);
 i.tr <- sample(nrow(pbc), 100);
@@ -68,7 +99,7 @@ cat('C-index:', gp.cInd$concordance, '\n');
 ```
 
 ```
-## C-index: 0.8358762
+## C-index: 0.8492154
 ```
 
 ## Extreme learning machine
@@ -89,9 +120,19 @@ sample $n$, like 500 or 1000 and ridge regulaization applied.
 
 The question is, why random mapping even works? Since usually $m > p$ (input 
 dimension) and $w_{ij}$ are independently sampled, thus 
-$$rank(X^TW) = rank(X)$$
+
+
+<p align="center">
+<img src="https://raw.githubusercontent.com/linxihui/sml/master/.README/equation/elm_rank_linear.png"  width="250">
+</p>
+
+<!-- $$rank(X^TW) = rank(X)$$ -->
 almost surely. However, after applying a non-linear activating function,
-$rank(Z) \approx \min(m, n)$. 
+
+<p align="center">
+<img src="https://raw.githubusercontent.com/linxihui/sml/master/.README/equation/elm_rank_act.png"  width="250">
+</p>
+<!-- $rank(Z) \approx \min(m, n)$. -->
 
 
 
@@ -105,7 +146,7 @@ cat('C-index:', elm.cInd$concordance, '\n');
 ```
 
 ```
-## C-index: 0.8317411
+## C-index: 0.839515
 ```
 
 
@@ -113,11 +154,22 @@ cat('C-index:', elm.cInd$concordance, '\n');
 
 Let $K = (k_{ij}) = K(x_i, x_j)$ be the kernel matrix. The weighted Kaplan-Meier estimate for survival function is
 
+<p align="center">
+<img src="https://raw.githubusercontent.com/linxihui/sml/master/.README/equation/KM.png"  width="500">
+</p>
+
+<!--
 $$\hat S_{\text{\tiny KM}}(t| x_i) = \prod_{l: t_l < t, \delta_l = 1} \left(1 - \dfrac{\sum_{j: t_j = t_l} k_{ij}}{\sum_{j: t_j \ge t_l} k_{ij}} \right).$$
+-->
 
 The weighted Nelson-Aalen estimator for the cummulative hazard function is
 
+<p align="center">
+<img src="https://raw.githubusercontent.com/linxihui/sml/master/.README/equation/NA.png"  width="400">
+</p>
+<!--
 $$\tilde H(t|x_i) = \sum_{t_i \le t}  \dfrac{\sum_{j: t_j = t_l} k_{ij}}{\sum_{j: t_j \ge t_l} k_{ij}}. $$
+-->
 
 
 ```r
@@ -135,8 +187,9 @@ cat('C-index:', kkm.cInd$concordance, '\n');
 plot(kkm.pred, subset = sample(length(i.tr), 10), lwd = 2);
 ```
 
-![](README_files/figure-html/kkm-1.png) 
-
 ```
-## C-index: 0.8497077
+## C-index: 0.8446505
 ```
+<p align="center">
+<img src="https://raw.githubusercontent.com/linxihui/sml/master/.README/figure-html/kkm-1.png"  width="480">
+</p>
