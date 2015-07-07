@@ -17,7 +17,7 @@ involve a baseline hazard function, and thus parameters of interest gain more de
 
 The Cox partial likelihood looks like
 
-$$ L(y | \theta, h_0(t)) = \prod_{i: \delta_i = 1} \dfrac{\exp(\theta_i)}{\sum_{j: y_j \ge y_i} \exp(\theta_j)}, $$
+![](https://raw.githubusercontent.com/linxihui/sml/master/README_files/cox_linear.png)
 
 where $\theta_i$'s are usually called *links*, or *log risk* (as $\exp{\theta_i}$'s are called *risk*).
 
