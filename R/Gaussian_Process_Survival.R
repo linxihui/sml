@@ -134,7 +134,7 @@ gpsrc.default <- function(
 		);
 	beta <- as.vector(coef(
 			glmnet(t(R), y, alpha = 0, lambda = lambda, 
-				standardize = FALSE, family = family, ...)
+				standardize = FALSE, family = family, intercept = FALSE,...)
 			));
 
 	if (!is.list(beta)) {
